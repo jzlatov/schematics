@@ -7,10 +7,37 @@ import functools
 import random
 import string
 
+import six
+from six import iteritems
+
 from ..exceptions import (
     StopValidation, ValidationError, ConversionError, MockCreationError
 )
 
+try: 
+    from string import ascii_letters # PY3
+except ImportError:
+    from string import letters as ascii_letters #PY2 
+
+try:
+    basestring #PY2
+except NameError:
+    basestring = str #PY3
+
+try:
+    unicode #PY2
+except:
+    import codecs
+    unicode = str #PY3
+
+def utf8_decode(s):
+
+    if six.PY3:
+        s = str(s) #todo: right thing to do?
+    else:
+        s = unicode(s, 'utf-8')
+
+    return s
 
 def fill_template(template, min_length, max_length):
     return template % random_string(
@@ -24,9 +51,11 @@ def fill_template(template, min_length, max_length):
 def force_unicode(obj, encoding='utf-8'):
     if isinstance(obj, basestring):
         if not isinstance(obj, unicode):
-            obj = unicode(obj, encoding)
+            #obj = unicode(obj, encoding)
+            obj = utf8_decode(obj)
     elif not obj is None:
-        obj = unicode(obj)
+        #obj = unicode(obj)
+        obj = utf8_decode(obj)
 
     return obj
 
@@ -58,7 +87,7 @@ def get_value_in(min_length, max_length, padding=0, required_length=0):
         *get_range_endpoints(min_length, max_length, padding, required_length))
 
 
-def random_string(length, chars=string.letters + string.digits):
+def random_string(length, chars=ascii_letters + string.digits):
     return ''.join(random.choice(chars) for _ in range(length))
 
 
@@ -89,7 +118,7 @@ class TypeMeta(type):
 
         attrs['MESSAGES'] = messages
 
-        for attr_name, attr in attrs.iteritems():
+        for attr_name, attr in iteritems(attrs):
             if attr_name.startswith("validate_"):
                 validators.append(attr)
 
@@ -122,7 +151,7 @@ class BaseType(TypeMeta('BaseTypeBase', (object, ), {})):
         searched to provide a value for the given field.  This only effects
         inbound data.
     :param choices:
-        An iterable of valid choices. This is the last step of the validator
+        A list of valid choices. This is the last step of the validator
         chain.
     :param validators:
         A list of callables. Each callable receives the value after it has been
@@ -151,6 +180,8 @@ class BaseType(TypeMeta('BaseTypeBase', (object, ), {})):
         self.required = required
         self._default = default
         self.serialized_name = serialized_name
+        if choices and not isinstance(choices, (list, tuple)):
+            raise TypeError('"choices" must be a list or tuple')
         self.choices = choices
         self.deserialize_from = deserialize_from
 
@@ -238,7 +269,7 @@ class UUIDType(BaseType):
     """A field that stores a valid UUID value.
     """
     MESSAGES = {
-        'convert': u"Couldn't interpret value as UUID.",
+        'convert': u"Couldn't interpret '{0}' value as UUID.",
     }
 
     def _mock(self, context=None):
@@ -249,7 +280,7 @@ class UUIDType(BaseType):
             try:
                 value = uuid.UUID(value)
             except (AttributeError, TypeError, ValueError):
-                raise ConversionError(self.messages['convert'])
+                raise ConversionError(self.messages['convert'].format(value))
         return value
 
     def to_primitive(self, value, context=None):
@@ -294,7 +325,7 @@ class StringType(BaseType):
     allow_casts = (int, str)
 
     MESSAGES = {
-        'convert': u"Couldn't interpret value as string.",
+        'convert': u"Couldn't interpret '{0}' as string.",
         'max_length': u"String value is too long.",
         'min_length': u"String value is too short.",
         'regex': u"String value did not match validation regex.",
@@ -318,9 +349,9 @@ class StringType(BaseType):
             if isinstance(value, self.allow_casts):
                 if not isinstance(value, str):
                     value = str(value)
-                value = unicode(value, 'utf-8')
+                value = utf8_decode(value) #unicode(value, 'utf-8')
             else:
-                raise ConversionError(self.messages['convert'])
+                raise ConversionError(self.messages['convert'].format(value))
 
         return value
 
@@ -372,10 +403,10 @@ class URLType(StringType):
         if not URLType.URL_REGEX.match(value):
             raise StopValidation(self.messages['invalid_url'])
         if self.verify_exists:
-            import urllib2
+            from six.moves import urllib
             try:
-                request = urllib2.Request(value)
-                urllib2.urlopen(request)
+                request = urllib.Request(value)
+                urllib.urlopen(request)
             except Exception:
                 raise StopValidation(self.messages['not_found'])
 
@@ -396,7 +427,7 @@ class EmailType(StringType):
         r'|^"([\001-\010\013\014\016-\037!#-\[\]-\177]|\\[\001-011\013\014\016'
         r'-\177])*"'
         # domain
-        r')@(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?$',
+        r')@(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,10}\.?$',
         re.IGNORECASE
     )
 
@@ -415,7 +446,7 @@ class NumberType(BaseType):
     """
 
     MESSAGES = {
-        'number_coerce': u"Value is not {0}",
+        'number_coerce': u"Value '{0}' is not {1}",
         'number_min': u"{0} value should be greater than {1}",
         'number_max': u"{0} value should be less than {1}",
     }
@@ -437,7 +468,7 @@ class NumberType(BaseType):
             value = self.number_class(value)
         except (TypeError, ValueError):
             raise ConversionError(self.messages['number_coerce']
-                                  .format(self.number_type.lower()))
+                                  .format(value, self.number_type.lower()))
 
         return value
 
@@ -470,7 +501,14 @@ class LongType(NumberType):
     """
 
     def __init__(self, *args, **kwargs):
-        super(LongType, self).__init__(number_class=long,
+
+        try:
+            number_class = long #PY2
+        except NameError:
+            number_class = int #PY3
+        
+
+        super(LongType, self).__init__(number_class=number_class,
                                        number_type='Long',
                                        *args, **kwargs)
 
@@ -492,7 +530,7 @@ class DecimalType(BaseType):
     """
 
     MESSAGES = {
-        'number_coerce': 'Number failed to convert to a decimal',
+        'number_coerce': "Number '{0}' failed to convert to a decimal",
         'number_min': u"Value should be greater than {0}",
         'number_max': u"Value should be less than {0}",
     }
@@ -516,7 +554,7 @@ class DecimalType(BaseType):
                 value = decimal.Decimal(value)
 
             except (TypeError, decimal.InvalidOperation):
-                raise ConversionError(self.messages['number_coerce'])
+                raise ConversionError(self.messages['number_coerce'].format(value))
 
         return value
 
@@ -807,7 +845,8 @@ class MultilingualStringType(BaseType):
             if isinstance(localized, self.allow_casts):
                 if not isinstance(localized, str):
                     localized = str(localized)
-                localized = unicode(localized, 'utf-8')
+                #localized = unicode(localized, 'utf-8')
+                localized = utf8_decode(localized)
             else:
                 raise ConversionError(self.messages['convert'])
 
