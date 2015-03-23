@@ -23,7 +23,7 @@ class Tox(TestCommand):
 
 
 tests_require = open(
-    os.path.join(os.path.dirname(__file__), 'requirements-testing.txt')).read().split() + ['tox']
+    os.path.join(os.path.dirname(__file__), 'requirements-testing.txt')).read().split()
 
 setup(
     name='schematics',
@@ -32,7 +32,7 @@ setup(
     description='Structured Data for Humans',
     author=u'James Dennis, Jökull Sólberg, Jóhann Þorvaldur Bergþórsson',
     author_email='jdennis@gmail.com, jokull@plainvanillagames.com, johann@plainvanillagames.com',
-    url='http://github.com/j2labs/schematics',
+    url='http://github.com/schematics/schematics',
     packages=['schematics', 'schematics.types', 'schematics.contrib'],
     classifiers=[
         'Environment :: Other Environment',
@@ -42,9 +42,16 @@ setup(
         'Programming Language :: Python',
         'Programming Language :: Python :: 2.6',
         'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.3',
+        'Programming Language :: Python :: 3.4',
     ],
     cmdclass={
         'test': Tox,
     },
+    install_requires=[
+        'six>=1.7.3',
+        'mock==1.0.1',
+    ],
     tests_require=tests_require,
 )
