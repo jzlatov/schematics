@@ -61,9 +61,11 @@ class FieldDescriptor(object):
         """
         Checks the field name against a model and sets the value.
         """
-        from .types.compound import ModelType
         field = instance._fields[self.name]
-        if not isinstance(value, Model) and isinstance(field, ModelType):
+        if all((
+                value is not None,
+                not isinstance(value, Model),
+                isinstance(field, ModelType))):
             value = field.model_class(value)
         instance._data[self.name] = value
 
@@ -217,12 +219,6 @@ class ModelMeta(type):
     def fields(cls):
         return cls._fields
 
-#   def __iter__(self):
-#       return itertools.chain(
-#           self.fields.iteritems(),
-#           self._unbound_fields.iteritems(),
-#           self._unbound_serializables.iteritems()
-#       )
 
 @add_metaclass(ModelMeta)
 class Model(object):
@@ -237,7 +233,6 @@ class Model(object):
     possible to convert the raw data into richer Python constructs.
     """
 
-    #__metaclass__ = ModelMeta
     __optionsclass__ = ModelOptions
 
     def __init__(self, raw_data=None, deserialize_mapping=None, strict=True):
@@ -435,3 +430,6 @@ class Model(object):
 
     def __unicode__(self):
         return '%s object' % self.__class__.__name__
+
+
+from .types.compound import ModelType
